@@ -1,0 +1,116 @@
+import sys
+import serial
+import time
+from PySide6.QtWidgets import (
+    QApplication, QWidget, QLabel, QLineEdit, QPushButton, QTextEdit,
+    QVBoxLayout, QHBoxLayout, QComboBox, QSpinBox, QGroupBox
+)
+from PySide6.QtCore import Qt
+
+class ArduinoControlGUI(QWidget):
+    def __init__(self):   
+        super().__init__()
+        self.setWindowTitle("Arduino LED Control")
+        self.setGeometry(100, 100, 400, 400)
+
+        # Serial parameters
+        self.arduino_port = "COM3"  # Change to your port
+        self.baud_rate = 115200
+        self.ser = None
+
+        # Status display
+        self.status_label = QLabel("Status: Not Connected")
+        self.status_label.setAlignment(Qt.AlignCenter)
+
+        # LED selection controls
+        self.led_select_label = QLabel("Select LED:")
+        self.led_select_combo = QComboBox()
+        self.led_select_combo.addItems(["Red LED (Channel 0)", "Blue LED (Channel 1)", "Green LED (Channel 2)"])
+
+        # Frequency control: QSpinBox (1-10000 Hz)
+        self.freq_label = QLabel("Frequency (Hz):")
+        self.freq_spin = QSpinBox()
+        self.freq_spin.setRange(1, 10000)
+        self.freq_spin.setValue(100)
+
+        # Duty cycle control: QSpinBox (1-99%)
+        self.duty_label = QLabel("Duty Cycle (%):")
+        self.duty_spin = QSpinBox()
+        self.duty_spin.setRange(1, 99)
+        self.duty_spin.setValue(50)
+
+        self.send_button = QPushButton("Send")
+        self.send_button.clicked.connect(self.send_command)
+
+        self.log_display = QTextEdit()
+        self.log_display.setReadOnly(True)
+
+        # Layout
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(self.status_label)
+
+        # Place LED selection and parameter controls in a GroupBox
+        control_group = QGroupBox("LED Control Parameters")
+        control_layout = QVBoxLayout()
+
+        led_layout = QHBoxLayout()
+        led_layout.addWidget(self.led_select_label)
+        led_layout.addWidget(self.led_select_combo)
+        control_layout.addLayout(led_layout)
+
+        freq_layout = QHBoxLayout()
+        freq_layout.addWidget(self.freq_label)
+        freq_layout.addWidget(self.freq_spin)
+        control_layout.addLayout(freq_layout)
+
+        duty_layout = QHBoxLayout()
+        duty_layout.addWidget(self.duty_label)
+        duty_layout.addWidget(self.duty_spin)
+        control_layout.addLayout(duty_layout)
+
+        control_group.setLayout(control_layout)
+        main_layout.addWidget(control_group)
+
+        main_layout.addWidget(self.send_button)
+        main_layout.addWidget(self.log_display)
+
+        self.setLayout(main_layout)
+        self.connect_serial()
+
+    def connect_serial(self):
+        """Attempt to connect to Arduino"""
+        try:
+            self.ser = serial.Serial(self.arduino_port, self.baud_rate, timeout=1)
+            time.sleep(2)  # Wait for Arduino to reset
+            self.status_label.setText(f"Status: Connected to {self.arduino_port}")
+            self.log_display.append(f"Successfully connected to {self.arduino_port}")
+        except serial.SerialException:
+            self.status_label.setText("Status: Connection Failed")
+            self.log_display.append(f"Unable to connect to {self.arduino_port}")
+
+    def send_command(self):
+        """Assemble and send command to Arduino"""
+        try:
+            channel = self.led_select_combo.currentIndex()  # 0,1,2
+            frequency = self.freq_spin.value()
+            duty_cycle = self.duty_spin.value()
+
+            # Construct command string in the format: SET=channel,freq,duty
+            command = f"SET={channel},{frequency},{duty_cycle}\n"
+            if self.ser:
+                self.ser.write(command.encode())
+                self.log_display.append(f"Sent: {command.strip()}")
+                # Read data returned from Arduino
+                response = self.ser.readline().decode().strip()
+                if response:
+                    self.log_display.append(f"Arduino: {response}")
+            else:
+                self.log_display.append("Error: Serial port not connected!")
+        except Exception as e:
+            self.log_display.append(f"Error: {str(e)}")
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = ArduinoControlGUI()
+    window.show()
+    sys.exit(app.exec())
